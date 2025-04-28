@@ -1,0 +1,64 @@
+name: Build Obfuscate my_v2wall
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "5 3 * * *"  # 每天凌晨3:05自动运行
+  workflow_dispatch:     # 支持手动运行
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整历史记录
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "latest"
+
+      - name: Install javascript-obfuscator
+        run: npm install -g javascript-obfuscator  # 只需要安装这一个依赖
+
+      - name: Download and process worker file
+        run: |
+          # 下载原始worker文件并保存为origin.js
+          wget -q https://raw.githubusercontent.com/eric52zhang/v2wall_ray/refs/heads/main/_worker.js -O origin.js
+          
+          # 生成混淆后的_worker.js
+          javascript-obfuscator origin.js --output _worker.js \
+            --compact true \
+            --identifier-names-generator hexadecimal \
+            --rename-globals true \
+            --string-array true \
+            --string-array-encoding 'base64' \
+            --string-array-threshold 0.75 \
+            --transform-object-keys true \
+            --self-defending false \
+            --simplify true
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # 添加两个文件
+          git add origin.js _worker.js
+          
+          # 检查是否有变化再提交
+          if git diff-index --quiet HEAD --; then
+            echo "没有检测到文件变化，跳过提交"
+          else
+            git commit -m ":arrow_up: 自动更新worker文件 [$(date +'%Y-%m-%d %H:%M:%S')]"
+            git pull --rebase origin main  # 先同步远程变更
+            git push origin main
+          fi
